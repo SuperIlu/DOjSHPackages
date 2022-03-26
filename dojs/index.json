@@ -3,6 +3,12 @@
 	"index_date": "2022-02-26T10:22:33.000Z",
 	"packages": [
 		{
+			"name": "qoienc",
+			"version": 1,
+			"url": "https://raw.githubusercontent.com/SuperIlu/DOjSHPackages/master/dojs/qoienc.js",
+			"depends": []
+		},
+		{
 			"name": "foo",
 			"version": 1,
 			"url": "https://raw.githubusercontent.com/SuperIlu/DOjSHPackages/master/dojs/foo.js",
