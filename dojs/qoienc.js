@@ -25,48 +25,80 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-function WriteUint32BE(f, val) {
-	f.WriteByte(0xFF & (val >> 24));
-	f.WriteByte(0xFF & (val >> 16));
-	f.WriteByte(0xFF & (val >> 8));
-	f.WriteByte(0xFF & (val));
+/**
+ * encode an integer as unsigned 32bit big endian
+ * 
+ * @param {IntArray} ia where to store the value
+ * @param {*} val the value
+ */
+function PushUint32BE(ia, val) {
+	ia.Push(0xFF & (val >> 24));
+	ia.Push(0xFF & (val >> 16));
+	ia.Push(0xFF & (val >> 8));
+	ia.Push(0xFF & (val));
 }
 
-function CopyPx(px) {
+/**
+ * create a clone of a pixel object
+ * 
+ * @param {*} px pixel object to copy
+ * 
+ * @returns a new pixel object with the same values as px.
+ */
+function ClonePx(px) {
 	return {
 		"v": px.v,
-		"rgba": {
-			"r": px.rgba.r,
-			"g": px.rgba.g,
-			"b": px.rgba.b,
-			"a": px.rgba.a
-		}
+		"r": px.r,
+		"g": px.g,
+		"b": px.b,
+		"a": px.a
 	};
 }
 
-function SaveQoiImage(bm, fn) {
+/**
+ * copy pixel data from source to destination.
+ * 
+ * @param {*} d destination object
+ * @param {*} s source object
+ */
+function CopyPx(d, s) {
+	d.v = s.v;
+	d.r = s.r;
+	d.g = s.g;
+	d.b = s.b;
+	d.a = s.a;
+}
+
+/**
+ * Encode a Bitmap as QOI image.
+ * 
+ * @param {Bitmap} bm the Bitmap to encode.
+ * 
+ * @returns {IntArray} the encoded image data as an IntArray.
+ */
+function EncodeQoi(bm) {
 	if ((typeof bm.width != "number") || (typeof bm.height != "number") || (typeof bm.GetPixel != "function")) {
 		throw new Error("[QOIENC] Not a Bitmap");
 	}
 
 	// open file and write magic
-	var f = new File(fn, FILE.WRITE);
-	f.WriteByte(CharCode('q'));
-	f.WriteByte(CharCode('o'));
-	f.WriteByte(CharCode('i'));
-	f.WriteByte(CharCode('f'));
+	var ia = new IntArray();
+	ia.Push(CharCode('q'));
+	ia.Push(CharCode('o'));
+	ia.Push(CharCode('i'));
+	ia.Push(CharCode('f'));
 
 	// write image size
-	WriteUint32BE(f, bm.width);
-	WriteUint32BE(f, bm.height);
+	PushUint32BE(ia, bm.width);
+	PushUint32BE(ia, bm.height);
 
 	// image channels are 4 (RGBA)
 	var QIO_NUM_CHANNEL = 4;
-	f.WriteByte(QIO_NUM_CHANNEL);
+	ia.Push(QIO_NUM_CHANNEL);
 
 	// image colorspace is linear
 	var QOI_LINEAR = 1;
-	f.WriteByte(QOI_LINEAR);
+	ia.Push(QOI_LINEAR);
 
 	// encode image
 	var QOI_OP_INDEX = 0x00 /* 00xxxxxx */
@@ -78,12 +110,10 @@ function SaveQoiImage(bm, fn) {
 	var QOI_MASK_2 = 0xc0 /* 11000000 */
 	var EMPTY_PX = {
 		"v": 0,
-		"rgba": {
-			"r": 0,
-			"g": 0,
-			"b": 0,
-			"a": 255
-		}
+		"r": 0,
+		"g": 0,
+		"b": 0,
+		"a": 255
 	};
 	var QOI_COLOR_HASH = function (c) {
 		return (c.r * 3 + c.g * 5 + c.b * 7 + c.a * 11);
@@ -91,12 +121,12 @@ function SaveQoiImage(bm, fn) {
 	var qoi_padding = [0, 0, 0, 0, 0, 0, 0, 1];
 	var index = [];
 	for (var i = 0; i < 64; i++) {
-		index.push(CopyPx(EMPTY_PX));
+		index.push(ClonePx(EMPTY_PX));
 	}
 
 	var run = 0;
-	var px_prev = CopyPx(EMPTY_PX);
-	var px = CopyPx(EMPTY_PX);
+	var px_prev = ClonePx(EMPTY_PX);
+	var px = ClonePx(EMPTY_PX);
 
 	var px_len = bm.width * bm.height * QIO_NUM_CHANNEL;
 	var px_end = px_len - QIO_NUM_CHANNEL;
@@ -106,36 +136,36 @@ function SaveQoiImage(bm, fn) {
 	var y = 0;
 	for (var px_pos = 0; px_pos < px_len; px_pos += channels) {
 		px.v = bm.GetPixel(x, y);
-		px.rgba.r = GetRed(px.v);
-		px.rgba.g = GetGreen(px.v);
-		px.rgba.b = GetBlue(px.v);
-		px.rgba.a = GetAlpha(px.v);
+		px.r = GetRed(px.v);
+		px.g = GetGreen(px.v);
+		px.b = GetBlue(px.v);
+		px.a = GetAlpha(px.v);
 
 		if (px.v === px_prev.v) {
 			run++;
 			if (run === 62 || px_pos === px_end) {
-				f.WriteByte(QOI_OP_RUN | (run - 1));
+				ia.Push(QOI_OP_RUN | (run - 1));
 				run = 0;
 			}
 		} else {
 			var index_pos;
 
 			if (run > 0) {
-				f.WriteByte(QOI_OP_RUN | (run - 1));
+				ia.Push(QOI_OP_RUN | (run - 1));
 				run = 0;
 			}
 
 			index_pos = QOI_COLOR_HASH(px) % 64;
 
 			if (index[index_pos].v === px.v) {
-				f.WriteByte(QOI_OP_INDEX | index_pos);
+				ia.Push(QOI_OP_INDEX | index_pos);
 			} else {
-				index[index_pos] = CopyPx(px);
+				CopyPx(index[index_pos], px);
 
-				if (px.rgba.a === px_prev.rgba.a) {
-					var vr = px.rgba.r - px_prev.rgba.r;
-					var vg = px.rgba.g - px_prev.rgba.g;
-					var vb = px.rgba.b - px_prev.rgba.b;
+				if (px.a === px_prev.a) {
+					var vr = px.r - px_prev.r;
+					var vg = px.g - px_prev.g;
+					var vb = px.b - px_prev.b;
 
 					var vg_r = vr - vg;
 					var vg_b = vb - vg;
@@ -145,30 +175,30 @@ function SaveQoiImage(bm, fn) {
 						vg > -3 && vg < 2 &&
 						vb > -3 && vb < 2
 					) {
-						f.WriteByte(QOI_OP_DIFF | (vr + 2) << 4 | (vg + 2) << 2 | (vb + 2));
+						ia.Push(QOI_OP_DIFF | (vr + 2) << 4 | (vg + 2) << 2 | (vb + 2));
 					} else if (
 						vg_r > -9 && vg_r < 8 &&
 						vg > -33 && vg < 32 &&
 						vg_b > -9 && vg_b < 8
 					) {
-						f.WriteByte(QOI_OP_LUMA | (vg + 32));
-						f.WriteByte((vg_r + 8) << 4 | (vg_b + 8));
+						ia.Push(QOI_OP_LUMA | (vg + 32));
+						ia.Push((vg_r + 8) << 4 | (vg_b + 8));
 					} else {
-						f.WriteByte(QOI_OP_RGB);
-						f.WriteByte(px.rgba.r);
-						f.WriteByte(px.rgba.g);
-						f.WriteByte(px.rgba.b);
+						ia.Push(QOI_OP_RGB);
+						ia.Push(px.r);
+						ia.Push(px.g);
+						ia.Push(px.b);
 					}
 				} else {
-					f.WriteByte(QOI_OP_RGBA);
-					f.WriteByte(px.rgba.r);
-					f.WriteByte(px.rgba.g);
-					f.WriteByte(px.rgba.b);
-					f.WriteByte(px.rgba.a);
+					ia.Push(QOI_OP_RGBA);
+					ia.Push(px.r);
+					ia.Push(px.g);
+					ia.Push(px.b);
+					ia.Push(px.a);
 				}
 			}
 		}
-		px_prev = CopyPx(px);
+		CopyPx(px_prev, px);
 
 		x++;
 		if (x >= bm.width) {
@@ -178,12 +208,28 @@ function SaveQoiImage(bm, fn) {
 	}
 
 	for (var i = 0; i < qoi_padding.length; i++) {
-		f.WriteByte(qoi_padding[i]);
+		ia.Push(qoi_padding[i]);
 	}
 
+	return ia;
+}
 
-	// close file
+/**
+ * Save a Bitmap as a QOI image.
+ * 
+ * @param {Bitmap} bm bitmap to save as QOI image.
+ * @param {string} fn the name of the file to create.
+ */
+function SaveQoiImage(bm, fn) {
+	var data = EncodeQoi(bm);
+
+	// open file and write magic
+	var f = new File(fn, FILE.WRITE);
+	f.WriteInts(data);
 	f.Close();
 }
 
+// export functions and version
+exports.__VERSION__ = 2;
 exports.SaveQoiImage = SaveQoiImage;
+exports.EncodeQoi = EncodeQoi;

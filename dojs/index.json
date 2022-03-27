@@ -4,7 +4,7 @@
 	"packages": [
 		{
 			"name": "qoienc",
-			"version": 1,
+			"version": 2,
 			"url": "https://raw.githubusercontent.com/SuperIlu/DOjSHPackages/master/dojs/qoienc.js",
 			"depends": []
 		},
